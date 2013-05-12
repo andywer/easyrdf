@@ -78,6 +78,14 @@ class EasyRdf_Parser
     {
         $this->bnodeMap = array();
     }
+    
+    /**
+     * Returns the blank node mapping in the format array( 'remoteBNodeId' => '_:localBNodeId' ).
+     */
+    public function getBnodeMap()
+    {
+        return $this->bnodeMap;
+    }
 
     /**
      * Check, cleanup parameters and prepare for parsing

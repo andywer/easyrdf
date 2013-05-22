@@ -46,6 +46,9 @@ class EasyRdf_TypeMapper
 {
     /** The type map registry */
     private static $map = array();
+    
+    /** The type inheritance tracking registry */
+    private static $inheritanceGraph = array();
 
     /** Get the registered class for an RDF type
      *
@@ -72,11 +75,12 @@ class EasyRdf_TypeMapper
 
     /** Register an RDF type with a PHP Class name
      *
-     * @param  string  $type   The RDF type (e.g. foaf:Person)
-     * @param  string  $class  The PHP class name (e.g. Model_Foaf_Name)
-     * @return string          The PHP class name
+     * @param  string  $type      The RDF type (e.g. foaf:Person)
+     * @param  string  $class     The PHP class name (e.g. Model_Foaf_Name)
+     * @param  string  $inherits  Optional. The type that $type inherits from
+     * @return string             The PHP class name
      */
-    public static function set($type, $class)
+    public static function set($type, $class, $super=null)
     {
         if (!is_string($type) or $type == null or $type == '') {
             throw new InvalidArgumentException(
@@ -90,7 +94,23 @@ class EasyRdf_TypeMapper
             );
         }
 
+        if ($super != null & !is_string($super)) {
+            throw new InvalidArgumentException(
+                "\$super should be a string"
+            );
+        }
+
         $type = EasyRdf_Namespace::expand($type);
+        if ($super) {
+            if (self::isSuperType($type, $super)) {
+                throw new InvalidArgumentException(
+                    "\$type is already a super type of \$super"
+                );
+            }
+            $super = EasyRdf_Namespace::expand($super);
+            self::$inheritanceGraph[$type] = $super;
+        }
+        
         return self::$map[$type] = $class;
     }
 
@@ -110,6 +130,79 @@ class EasyRdf_TypeMapper
         $type = EasyRdf_Namespace::expand($type);
         if (isset(self::$map[$type])) {
             unset(self::$map[$type]);
+        }
+        if (isset(self::$inheritanceGraph[$type])) {
+            unset(self::$inheritanceGraph[$type]);
+        }
+        
+        while (($i = array_search($type, self::$inheritanceGraph)) !== false) {
+            unset(self::$inheritanceGraph[$i]);
+        }
+    }
+    
+    
+    /**
+     *  Get the most specific type of a set of types. That means that all other
+     *  given types are super-types of most specific one.
+     *
+     *  Requires that all types inherit from another (directly or indirectly).
+     *  Returns null otherwise.
+     *
+     *  @param  array  $types   A set of types
+     *  @return string          The most specific type or null
+     */
+    public static function getMostSpecificType($types) {
+        if (!is_array($types) || count($types) == 0) {
+            throw new IllegalArgumentException(
+                "\$types should be an array and cannot be empty"
+            );
+        }
+        if (count($types) == 1) {
+            return $types[0];
+        }
+        
+        $mostSpecific = array_shift($types);
+        $mostSpecific = EasyRdf_Namespace::expand($mostSpecific);
+        foreach ($types as $type) {
+            $type = EasyRdf_Namespace::expand($type);
+            if (self::isSuperType($mostSpecific, $type)) {
+                $mostSpecific = $type;
+            } else if (self::isSuperType($type, $mostSpecific)) {
+                continue;
+            } else {
+                return null;
+            }
+        }
+        
+        return $mostSpecific;
+    }
+    
+    
+    /**
+     *  Checks if the given $type inherits from $super (directly or indirectly).
+     *
+     *  @param  string  $super  The probable super type
+     *  @param  string  $type   The probable sub-type of $super
+     *  @return boolean         True if $super is a super-type of $type
+     */
+    private static function isSuperType ($super, $type) {
+        $super = EasyRdf_Namespace::expand($super);
+        $type  = EasyRdf_Namespace::expand($type);
+        
+        if ($super == $type) {
+            return true;
+        }
+        
+        $typeSuper = isset(self::$inheritanceGraph[$type])
+                   ? self::$inheritanceGraph[$type]
+                   : null;
+        
+        if (!$typeSuper) {
+            return false;
+        } else if ($typeSuper == $super) {
+            return true;
+        } else {
+            return self::isSuperType($super, $typeSuper);
         }
     }
 }

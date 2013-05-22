@@ -159,13 +159,25 @@ class EasyRdf_Graph
     {
         $rdfType = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
         if (isset($this->index[$uri][$rdfType])) {
+            $mappedTypes = array();
             foreach ($this->index[$uri][$rdfType] as $type) {
                 if ($type['type'] == 'uri' or $type['type'] == 'bnode') {
                     $class = EasyRdf_TypeMapper::get($type['value']);
                     if ($class != null) {
-                        return $class;
+                        array_push($mappedTypes, $type['value']);
                     }
                 }
+            }
+            
+            if(count($mappedTypes) > 0) {
+                $type = EasyRdf_TypeMapper::getMostSpecificType($mappedTypes);
+                if(!$type) {
+                    throw new EasyRdf_Exception(
+                        "Unable to determine the type for instantiation: $uri".
+                        " (".implode(", ", $mappedTypes).")"
+                    );
+                }
+                return EasyRdf_TypeMapper::get($type);
             }
         }
 
